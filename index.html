@@ -276,6 +276,11 @@ table.schedule thead .stat-col small{display:block;font-size:.6rem;opacity:.85;f
 /* ปุ่มซ่อน/แสดงคอลัมน์ ตำแหน่ง / สรุปท้ายตาราง (ใช้กับทั้ง 3 ตาราง) */
 /* คำอธิบายวิธีอ่านตาราง ย้ายไปไว้ในเมนู 📖 คู่มือ แล้ว — ไม่แสดงในหน้าตาราง */
 #schedModeHint,#bothLegend,#otBanner{display:none!important}
+.sched-group-switch{display:inline-flex;background:#fef3c7;border:1px solid #fcd34d;border-radius:12px;padding:3px;gap:3px}
+.sched-group-switch button{border:none;background:transparent;padding:7px 12px;border-radius:9px;font-weight:700;font-size:.82rem;color:#92400e;cursor:pointer;font-family:inherit}
+.sched-group-switch button.active{background:linear-gradient(135deg,#f59e0b,#d97706);color:#fff;box-shadow:0 2px 6px rgba(146,64,14,.25)}
+.sched-group-switch .gcnt{font-size:.7rem;background:rgba(255,255,255,.35);border-radius:999px;padding:0 6px;margin-left:2px}
+.sched-group-switch button:not(.active) .gcnt{background:#fde68a}
 .col-toggles{margin-left:auto;display:inline-flex;gap:4px;background:#e2e8f0;border-radius:10px;padding:3px}
 .col-tgl{border:none;background:transparent;color:#64748b;font-weight:700;font-size:.78rem;padding:6px 11px;border-radius:8px;cursor:pointer;font-family:inherit}
 .col-tgl::before{content:'◻ ';font-weight:400}
@@ -799,6 +804,11 @@ table.schedule thead .stat-col small{display:block;font-size:.6rem;opacity:.85;f
         <button id="modeBtnOT" role="tab" onclick="setScheduleMode('ot')">💰 ตารางโอที</button>
         <button id="modeBtnBoth" role="tab" onclick="setScheduleMode('both')">🔀 เวร+OT</button>
       </div>
+      <div class="sched-group-switch" role="tablist" aria-label="เลือกกลุ่ม">
+        <button id="grpBtnJad" onclick="setSchedGroup('jad')">👩‍⚕️ พยาบาล <span class="gcnt" id="grpCntJad"></span></button>
+        <button id="grpBtnNong" onclick="setSchedGroup('nong')">🤝 ผู้ช่วยพยาบาล / พนักงาน <span class="gcnt" id="grpCntNong"></span></button>
+        <button id="grpBtnAll" onclick="setSchedGroup('all')">👥 ทั้งหมด</button>
+      </div>
       <div class="col-toggles" title="ซ่อน/แสดงคอลัมน์ เพื่อให้เห็นรายชื่อและวันครบทุกวัน">
         <button id="tglPos" class="col-tgl on" onclick="toggleSchedCol('pos')">ตำแหน่ง</button>
         <button id="tglStats" class="col-tgl on" onclick="toggleSchedCol('stats')">สรุปท้ายตาราง</button>
@@ -970,7 +980,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_jPNXuKo5BAxkQUgkBQ_wNg_tcq9KhmQ';
 // เวอร์ชันของโปรแกรม (รูปแบบ ปปปป.ดด.วว.ครั้งที่ — เรียงตามตัวอักษรได้) ใช้ 2 อย่าง:
 // 1) เตือนให้รีโหลดเมื่อมีไฟล์ใหม่บนเว็บ (มือถือ/เบราว์เซอร์มักจำไฟล์เก่าไว้นาน)
 // 2) กันเครื่องที่ยังเปิดเวอร์ชันเก่าค้างอยู่ ไม่ให้บันทึกทับข้อมูลที่เวอร์ชันใหม่บันทึกไว้
-const APP_VERSION = '2026.09.26.25';
+const APP_VERSION = '2026.09.26.26';
 const SUPABASE_CONFIGURED = SUPABASE_URL.startsWith('http') && SUPABASE_ANON_KEY && SUPABASE_ANON_KEY !== 'YOUR_SUPABASE_ANON_KEY';
 let supabaseClient = null;
 if (SUPABASE_CONFIGURED) {
@@ -2339,7 +2349,8 @@ function renderSchedule() {
     html += `<th class="stat-col">${h}${isRollup?'<small>(รวม)</small>':''}</th>`;
   });
   html += '</tr></thead><tbody>';
-  const sorted = [...state.nurses].filter(inRoster()).sort((a,b) => a.order - b.order);
+  updateSchedGroupUI();
+  const sorted = [...state.nurses].filter(inRoster()).filter(inSchedGroup).sort((a,b) => a.order - b.order);
   sorted.forEach((n, idx) => {
     const pos = getPosition(n.position);
     html += '<tr data-nid="' + n.id + '">';
@@ -3890,6 +3901,24 @@ function renderOTPalette() {
   el.innerHTML = html;
 }
 var scheduleMode = 'reg';
+// กลุ่มที่แสดงในตารางเวร: jad = พยาบาล (เวรจัด), nong = ผู้ช่วยพยาบาล/พนักงานช่วยเหลือคนไข้ (เวรน้อง), all = ทั้งหมด
+function getSchedGroup() { const g = getSchedColPrefs().group; return (g === 'nong' || g === 'all') ? g : 'jad'; }
+function schedGroupSuffix() { const g = getSchedGroup(); return g === 'jad' ? '_พยาบาล' : (g === 'nong' ? '_ผู้ช่วยพยาบาล-พนักงาน' : ''); }
+function inSchedGroup(n) { const g = getSchedGroup(); return g === 'all' || hospFormGroupOf(n) === g; }
+function updateSchedGroupUI() {
+  const g = getSchedGroup();
+  [['jad', 'grpBtnJad'], ['nong', 'grpBtnNong'], ['all', 'grpBtnAll']].forEach(([k, id]) => { const b = document.getElementById(id); if (b) b.classList.toggle('active', g === k); });
+  const ppl = state.nurses.filter(inRoster());
+  const cj = document.getElementById('grpCntJad'), cn = document.getElementById('grpCntNong');
+  if (cj) cj.textContent = ppl.filter(n => hospFormGroupOf(n) === 'jad').length;
+  if (cn) cn.textContent = ppl.filter(n => hospFormGroupOf(n) === 'nong').length;
+}
+function setSchedGroup(g) {
+  const p = getSchedColPrefs(); p.group = g;
+  try { localStorage.setItem('schedColPrefs', JSON.stringify(p)); } catch (e) {}
+  renderSchedule(); renderOTSchedule(); if (scheduleMode === 'both') renderCombinedSchedule();
+  fitTablesToViewport();
+}
 // ซ่อน/แสดงคอลัมน์ "ตำแหน่ง" และ "สรุปท้ายตาราง" ในหน้าตารางเวร (จำค่าไว้ในเครื่องนี้)
 var schedColPrefs = null;
 function getSchedColPrefs() {
@@ -3975,7 +4004,7 @@ function renderCombinedSchedule() {
   }
   html += '<th class="stat-col">เวรปกติ<small>(รวม)</small></th><th class="stat-col">OT<small>(เวร)</small></th><th class="stat-col">หน่วยรวม</th><th class="stat-col">OT<small>(บาท)</small></th>';
   html += '</tr></thead><tbody>';
-  state.nurses.filter(inRoster()).sort((a,b) => a.order - b.order).forEach((n, idx) => {
+  state.nurses.filter(inRoster()).filter(inSchedGroup).sort((a,b) => a.order - b.order).forEach((n, idx) => {
     const pos = getPosition(n.position);
     html += `<tr data-nid="${n.id}"><td class="sticky-col no">${idx+1}</td><td class="sticky-col name">${n.name}</td><td class="sticky-col pos"><span class="pos-badge ${pos.badge}">${pos.icon} ${n.position}</span></td>`;
     for (let d = 1; d <= days; d++) {
@@ -4011,7 +4040,7 @@ function renderOTSchedule() {
   }
   ['ช','บ','ด','ชบ','ดบ','ชด','หน่วย','บาท'].forEach(h => html += `<th class="stat-col">${h}${['ช','บ','ด'].includes(h) ? '<small>(รวม)</small>' : ''}</th>`);
   html += '</tr></thead><tbody>';
-  state.nurses.filter(inRoster()).sort((a,b) => a.order - b.order).forEach((n, idx) => {
+  state.nurses.filter(inRoster()).filter(inSchedGroup).sort((a,b) => a.order - b.order).forEach((n, idx) => {
     const pos = getPosition(n.position);
     html += `<tr data-nid="${n.id}"><td class="sticky-col no">${idx+1}</td><td class="sticky-col name">${n.name}</td><td class="sticky-col pos"><span class="pos-badge ${pos.badge}">${pos.icon} ${n.position}</span></td>`;
     for (let d = 1; d <= days; d++) {
@@ -5341,8 +5370,8 @@ async function exportScheduleExcel() {
   for (let d=1; d<=days; d++) dayLabels.push(dayLabel(state.year, state.month, d));
   STAT_HEADS.forEach(() => dayLabels.push(''));
   aoa.push(dayLabels);
-  // ── BODY ── (2 แถวต่อคน)
-  const sorted = state.nurses.filter(inRoster()).sort((a,b)=>a.order-b.order);
+  // ── BODY ── (2 แถวต่อคน) — ตามกลุ่มที่เลือกในหน้าตารางเวร
+  const sorted = state.nurses.filter(inRoster()).filter(inSchedGroup).sort((a,b)=>a.order-b.order);
   const bodyMerges = [];
   const BODY_START = aoa.length; // index แถวแรกของเนื้อหา (0-based)
   sorted.forEach((n, idx) => {
@@ -5386,7 +5415,7 @@ async function exportScheduleExcel() {
     orientation:'landscape', paperSize:9, fitToWidth:1, fitToHeight:1, horizontalCentered:true,
     bordersRange: {startRow: 7, endRow: 8 + sorted.length * 2, startCol: 1, endCol: totalCols}
   });
-  saveAs(new Blob([patched], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `ตารางเวร+OT_${THAI_MONTHS[state.month-1]}_${state.year}.xlsx`);
+  saveAs(new Blob([patched], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}), `ตารางเวร+OT${schedGroupSuffix()}_${THAI_MONTHS[state.month-1]}_${state.year}.xlsx`);
   showSuccess('ส่งออก Excel เรียบร้อย', '<small>📄 แนวนอน A4 · พอดี 1 หน้า</small>');
 }
 
@@ -5477,7 +5506,7 @@ async function editMonthNotes() {
 function checkScheduleDocData() {
   const miss = [];
   if (!state.orgInfo.ward) miss.push('ยังไม่ได้ใส่ <b>ชื่อหอผู้ป่วย/หน่วยงาน</b> (เมนู 🏥 ข้อมูลหน่วยงาน)');
-  const people = state.nurses.filter(inRoster());
+  const people = state.nurses.filter(inRoster()).filter(inSchedGroup);
   const noCode = people.filter(n => !n.staffCode).map(n => n.name);
   const noPos = people.filter(n => !(n.docPosition || n.position)).map(n => n.name);
   if (noCode.length) miss.push(`ไม่มี <b>รหัสเจ้าหน้าที่</b> ${noCode.length} คน: ${noCode.map(escHtml).join(', ')}`);
@@ -5500,7 +5529,7 @@ async function drawScheduleDocCanvas() {
   const agency = f.agency || (state.orgInfo.hospital ? 'ส่วนราชการ ' + state.orgInfo.hospital : '');
   const notes = String((state.monthNotes || {})[state.year + '-' + state.month] || '').split('\n').map(s => s.trim()).filter(Boolean);
   const signers = getDocSigners(f);
-  const people = state.nurses.filter(inRoster()).sort((a, b) => a.order - b.order);
+  const people = state.nurses.filter(inRoster()).filter(inSchedGroup).sort((a, b) => a.order - b.order);
 
   // ── ขนาด (หน่วย px ก่อนขยาย) — สัดส่วน A4 แนวนอน ──
   const W = 1600, M = 40;
@@ -5657,7 +5686,7 @@ async function exportSchedulePDF(mode) {
     if (imgH > ph - margin * 2) { const k = (ph - margin * 2) / imgH; imgW *= k; imgH *= k; }
     const img = canvas.toDataURL('image/png');
     pdf.addImage(img, 'PNG', (pw - imgW) / 2, (ph - imgH) / 2, imgW, imgH);   // กึ่งกลางหน้ากระดาษ
-    const pdfName = `ตารางเวร+OT_${THAI_MONTHS[state.month-1]}_${state.year}.pdf`;
+    const pdfName = `ตารางเวร+OT${schedGroupSuffix()}_${THAI_MONTHS[state.month-1]}_${state.year}.pdf`;
     Swal.close();
     if (mode === 'preview') { openPdfPreview(pdf, pdfName, img); return; }
     pdf.save(pdfName);
